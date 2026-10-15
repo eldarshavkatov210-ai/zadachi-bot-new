@@ -26,6 +26,7 @@ class GroupResult:
     chat_id: int
     title: str
     items: list[Item] = field(default_factory=list)
+    reminders_enabled: bool = True
     sent: bool | None = None       # None — yuborilmadi (rejim), True/False — natija
     error: str | None = None
 
@@ -137,6 +138,8 @@ def build_report(results: list[GroupResult], now: datetime, mode: str) -> list[s
             sent_count += 1
         elif r.sent is False:
             status = f" · ⚠️ yuborilmadi: {escape(r.error or 'xato')}"
+        elif mode == "sent" and not r.reminders_enabled:
+            status = " · 🔕 eslatmalar o'chirilgan"
         lines.append(f"❗ <b>{name}</b> — {r.undone_count} ta bajarilmagan{status}")
         for d, day_items in group_by_day(r.items).items():
             suffix = " (bugun)" if d == now.date() else ""

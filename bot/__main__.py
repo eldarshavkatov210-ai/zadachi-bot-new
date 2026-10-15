@@ -7,12 +7,13 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 
-from .checker import run_check
+from .admin import router as admin_router
+from .checker import apply_schedule
 from .config import load_config
 from .db import Database
 from .handlers import router
+from .settings import Settings
 
 log = logging.getLogger("bot")
 
@@ -23,6 +24,7 @@ async def main():
 
     db = await Database.create(config.database_url)
     await db.init_schema()
+    settings = await Settings.load(db, config)
 
     bot = Bot(config.bot_token, default=DefaultBotProperties(
         parse_mode=ParseMode.HTML, link_preview_is_disabled=True))
@@ -36,29 +38,28 @@ async def main():
             log.warning("Guruh %s ma'lumotini olib bo'lmadi: %s", gid, e)
         await db.ensure_group(gid, title)
 
-    dp = Dispatcher(db=db, config=config)
-    dp.include_router(router)
-
     scheduler = AsyncIOScheduler(timezone=config.tz)
-    for h, m in config.remind_times:
-        scheduler.add_job(
-            run_check, CronTrigger(hour=h, minute=m, timezone=config.tz),
-            kwargs={"bot": bot, "db": db, "config": config, "send_to_groups": config.send_to_groups},
-            misfire_grace_time=3600, coalesce=True, max_instances=1,
-        )
+    apply_schedule(scheduler, bot, db, config, settings)
     scheduler.start()
 
+    dp = Dispatcher(db=db, config=config, settings=settings, scheduler=scheduler)
+    dp.include_router(admin_router)  # admin panel birinchi: /start adminlar uchun panelni ochadi
+    dp.include_router(router)
+
     await bot.set_my_commands([
+        BotCommand(command="admin", description="Admin panel"),
         BotCommand(command="hisobot", description="Hozirgi holat (guruhlarga yubormasdan)"),
         BotCommand(command="tekshir", description="Hoziroq tekshirib, eslatma yuborish"),
         BotCommand(command="guruhlar", description="Kuzatilayotgan guruhlar"),
         BotCommand(command="yordam", description="Yordam"),
     ], scope=BotCommandScopeAllPrivateChats())
 
-    times = ", ".join(f"{h:02d}:{m:02d}" for h, m in config.remind_times)
-    for admin_id in config.admin_ids:
+    times = settings.times_text
+    pause_note = " ⏸ Avtomatik tekshiruv pauzada." if settings.paused else ""
+    for admin_id in settings.admin_ids:
         try:
-            await bot.send_message(admin_id, f"✅ Bot ishga tushdi. Tekshiruv vaqti: {times} ({config.tz.key}).")
+            await bot.send_message(admin_id, f"✅ Bot ishga tushdi. Tekshiruv vaqti: {times} "
+                                             f"({config.tz.key}).{pause_note}\nPanel: /admin")
         except Exception:
             log.warning("Admin %s ga xabar yuborib bo'lmadi (botga /start bosilmagan bo'lishi mumkin)", admin_id)
 

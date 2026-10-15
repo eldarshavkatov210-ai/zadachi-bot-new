@@ -21,7 +21,9 @@ railway.json    Railway sozlamasi
 
 ## Buyruqlar
 
-Shaxsiy chatda (faqat admin): `/hisobot` — holatni ko'rish (guruhlarga yubormaydi), `/tekshir` — hoziroq eslatma yuborish, `/guruhlar` — guruhlar va statistika, `/yordam`.
+Shaxsiy chatda (faqat admin): `/admin` (yoki `/start`) — tugmali admin panel: hisobot, hoziroq eslatma, guruhlar boshqaruvi (eslatmani o'chirish, kuzatuvni to'xtatish, o'chirish), statistika va eng faol ijrochilar, guruhlarga xabar yuborish, eslatmalar tarixi, sozlamalar (tekshiruv vaqtlari, davr, pauza — qayta ishga tushirmasdan), adminlar, Excel (CSV) eksport.
+Paneldagi sozlamalar bazada saqlanadi; `.env` dagi qiymatlar faqat boshlang'ich qiymat.
+Buyruqlar: `/hisobot` — holatni ko'rish (guruhlarga yubormaydi), `/tekshir` — hoziroq eslatma yuborish, `/guruhlar` — guruhlar va statistika, `/yordam`.
 Guruh ichida (faqat admin): `/ulash` — kuzatuvga qo'shish, `/uzish` — olib tashlash. Admin botni yangi guruhga qo'shsa, guruh avtomatik kuzatuvga olinadi.
 
 ## Botni tayyorlash (bir marta)

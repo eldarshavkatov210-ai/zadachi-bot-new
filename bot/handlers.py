@@ -11,6 +11,7 @@ from aiogram.types import ChatMemberUpdated, Message
 from .checker import run_check
 from .config import Config
 from .db import Database, TaskData
+from .settings import Settings
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -20,9 +21,9 @@ PRIVATE = F.chat.type == "private"
 
 
 class IsAdmin(BaseFilter):
-    async def __call__(self, event, config: Config) -> bool:
+    async def __call__(self, event, settings: Settings) -> bool:
         user = getattr(event, "from_user", None)
-        return bool(user and user.id in config.admin_ids)
+        return bool(user and settings.is_admin(user.id))
 
 
 # ---------------- yordamchi funksiyalar ----------------
@@ -115,12 +116,12 @@ async def on_title(message: Message, db: Database):
 
 # ---------------- bot guruhga qo'shilganda / chiqarilganda ----------------
 @router.my_chat_member(ChatMemberUpdatedFilter(JOIN_TRANSITION))
-async def on_bot_added(event: ChatMemberUpdated, db: Database, config: Config, bot: Bot):
+async def on_bot_added(event: ChatMemberUpdated, db: Database, settings: Settings, bot: Bot):
     if event.chat.type not in ("group", "supergroup"):
         return
-    if event.from_user and event.from_user.id in config.admin_ids:
+    if event.from_user and settings.is_admin(event.from_user.id):
         await db.add_group(event.chat.id, event.chat.title)
-        for admin_id in config.admin_ids:
+        for admin_id in settings.admin_ids:
             try:
                 await bot.send_message(
                     admin_id,
@@ -155,6 +156,7 @@ HELP = (
     "{times} da belgilanmagan vazifalar bo'yicha guruhlarga eslatma, "
     "sizga esa hisobot yuboradi.\n\n"
     "<b>Buyruqlar:</b>\n"
+    "/admin — admin panel (hamma narsa tugmalar orqali)\n"
     "/hisobot — hozirgi holat (guruhlarga hech narsa yuborilmaydi)\n"
     "/tekshir — hoziroq tekshirib, guruhlarga eslatma yuborish\n"
     "/guruhlar — kuzatilayotgan guruhlar va statistika\n\n"
@@ -164,11 +166,9 @@ HELP = (
 )
 
 
-@router.message(PRIVATE, CommandStart(), IsAdmin())
 @router.message(PRIVATE, Command("help", "yordam"), IsAdmin())
-async def cmd_start(message: Message, config: Config):
-    times = ", ".join(f"{h:02d}:{m:02d}" for h, m in config.remind_times)
-    await message.answer(HELP.format(times=times))
+async def cmd_help(message: Message, settings: Settings):
+    await message.answer(HELP.format(times=settings.times_text))
 
 
 @router.message(PRIVATE, CommandStart())
@@ -177,25 +177,25 @@ async def cmd_start_other(message: Message):
 
 
 @router.message(PRIVATE, Command("hisobot", "report"), IsAdmin())
-async def cmd_report(message: Message, bot: Bot, db: Database, config: Config):
-    await run_check(bot, db, config, send_to_groups=False, report_to=[message.chat.id])
+async def cmd_report(message: Message, bot: Bot, db: Database, config: Config, settings: Settings):
+    await run_check(bot, db, config, settings, send_to_groups=False, report_to=[message.chat.id])
 
 
 @router.message(PRIVATE, Command("tekshir", "check"), IsAdmin())
-async def cmd_check(message: Message, bot: Bot, db: Database, config: Config):
+async def cmd_check(message: Message, bot: Bot, db: Database, config: Config, settings: Settings):
     await message.answer("⏳ Tekshirilmoqda va guruhlarga eslatma yuborilmoqda...")
-    await run_check(bot, db, config, send_to_groups=True, report_to=[message.chat.id])
+    await run_check(bot, db, config, settings, send_to_groups=True, report_to=[message.chat.id])
 
 
 @router.message(PRIVATE, Command("guruhlar", "groups"), IsAdmin())
-async def cmd_groups(message: Message, bot: Bot, db: Database, config: Config):
-    since = datetime.now(config.tz) - timedelta(days=config.lookback_days)
+async def cmd_groups(message: Message, bot: Bot, db: Database, config: Config, settings: Settings):
+    since = datetime.now(config.tz) - timedelta(days=settings.lookback_days)
     groups = await db.active_groups()
     if not groups:
         await message.answer("Kuzatilayotgan guruh yo'q. Guruhga botni qo'shing yoki guruhda /ulash yozing.")
         return
     me = await bot.me()
-    lines = [f"📋 <b>Kuzatilayotgan guruhlar</b> (oxirgi {config.lookback_days} kun):", ""]
+    lines = [f"📋 <b>Kuzatilayotgan guruhlar</b> (oxirgi {settings.lookback_days} kun):", ""]
     for g in groups:
         st = await db.group_stats(g["chat_id"], since)
         try:
